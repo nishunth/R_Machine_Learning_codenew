@@ -1,0 +1,1128 @@
+library(rpart)
+library(rpart.plot)
+library(dplyr)
+library(ggplot2)
+library(randomForest)
+library(caTools)
+library(mlbench)
+library(caret)
+
+getwd()
+setwd("C:/Users/Desktop/Analytics")
+
+
+set.seed(101)
+dataset = read.csv('Data.csv')
+
+# Splitting the dataset into the Training set and Test set
+# install.packages('caTools')
+
+library(caTools)
+set.seed(123)
+split = sample.split(dataset$DependentVariable, SplitRatio = 0.8)
+training_set = subset(dataset, split == TRUE)
+test_set = subset(dataset, split == FALSE)
+
+-----------------------------------------------------------------------------------------
+
+# Taking care of missing data
+dataset$Age = ifelse(is.na(dataset$Age),
+                     ave(dataset$Age, FUN = function(x) mean(x, na.rm = TRUE)),
+                     dataset$Age)
+
+-----------------------------------------------------------------------------------------
+
+# Encoding categorical data
+dataset$Country = factor(dataset$Country,
+                         levels = c('France', 'Spain', 'Germany'),
+                         labels = c(1, 2, 3))
+						 
+------------------------------------------------------------------------------------------
+
+# Feature Scaling
+training_set[,2:3] = scale(training_set[,2:3])
+test_set[,2:3] = scale(test_set[,2:3])
+
+------------------------------------------------------------------------------------------
+
+# Fitting Simple Linear Regression to the Training set
+regressor = lm(formula = Salary ~ YearsExperience,
+               data = training_set)
+
+------------------------------------------------------------------------------------------	
+# Predicting the Test set results
+y_pred = predict(regressor, newdata = test_set)
+
+------------------------------------------------------------------------------------------	
+
+# Function that returns Root Mean Squared Error
+rmse <- function(error)
+{
+  sqrt(mean(error^2))
+}
+
+# Function that returns Mean Absolute Error
+mae <- function(error)
+{
+  mean(abs(error))
+}
+
+#r2
+
+R2=function(actual,predict)
+{
+  R2 <- 1 - (sum((actual-predict )^2)/sum((actual-mean(actual))^2))
+  print(R2)
+}
+
+R2=function(pred, obs, formula = "corr", na.rm = FALSE) {
+  n <- sum(complete.cases(pred))
+  switch(formula,
+         corr = cor(obs, pred, use = ifelse(na.rm, "complete.obs", "everything"))^2,
+         traditional = 1 - (sum((obs-pred)^2, na.rm = na.rm)/((n-1)*var(obs, na.rm = na.rm))))
+}
+
+# Calculate error
+error=pred-test$Salary
+rmse(error)
+mae(error)
+R2(pred,test$Salary) 
+
+------------------------------------------------------------------------------------------	
+
+# Fitting Multiple Linear Regression to the Training set
+regressor = lm(formula = Profit ~ .,
+               data = training_set)
+
+# Predicting the Test set results
+y_pred = predict(regressor, newdata = test_set)
+
+------------------------------------------------------------------------------------------	
+# Fitting Linear Regression to the dataset
+lin_reg = lm(formula = Salary ~ .,
+             data = dataset)
+
+# Fitting Polynomial Regression to the dataset
+dataset$Level2 = dataset$Level^2
+dataset$Level3 = dataset$Level^3
+dataset$Level4 = dataset$Level^4
+poly_reg = lm(formula = Salary ~ .,
+              data = dataset)
+
+------------------------------------------------------------------------------------------	
+# Fitting SVR to the dataset
+library(e1071)
+regressor = svm(formula = Salary ~ .,
+                data = dataset,
+                type = 'eps-regression',
+                kernel = 'radial')
+
+# Predicting a new result
+y_pred = predict(regressor, data.frame(Level = 6.5))	
+
+------------------------------------------------------------------------------------------	
+# Fitting Decision Tree to the dataset
+library(rpart)
+regressor = rpart(formula = Salary ~ .,
+                  data = dataset,
+                  control = rpart.control(minsplit = 1))
+
+# Predicting a new result with Decision Tree Regression
+y_pred = predict(regressor, data.frame(Level = 6.5))
+
+------------------------------------------------------------------------------------------	
+# Fitting Random Forest Regression to the dataset
+library(randomForest)
+set.seed(1234)
+regressor = randomForest(x = dataset[-2],
+                         y = dataset$Salary,
+                         ntree = 500)
+
+# Predicting a new result with Random Forest Regression
+y_pred = predict(regressor, data.frame(Level = 6.5))		
+
+------------------------------------------------------------------------------------------	  
+
+
+-------------------------------------------------------------------------------------------------
+# attach the BostonHousing dataset
+data(BostonHousing)
+
+# Split out validation dataset
+# create a list of 80% of the rows in the original dataset we can use for training
+set.seed(7)
+validation_index <- createDataPartition(BostonHousing$medv, p=0.80, list=FALSE)
+# select 20% of the data for validation
+validation <- BostonHousing[-validation_index,]
+# use the remaining 80% of data to training and testing the models
+dataset <- BostonHousing[validation_index,]
+
+
+# Run algorithms using 10-fold cross validation
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "RMSE"
+# lm
+set.seed(7)
+model <- train(medv~., data=dataset, method="lm", metric=metric, preProc=c("center", "scale"), trControl=control)
+
+
+# estimate variable importance
+importance <- varImp(model, scale=FALSE)
+# summarize importance
+print(importance)
+# plot importance
+plot(importance)
+
+-------------------------------------------------------------------------------------------------
+#feature Elimination
+
+#ensure the results are repeatable
+set.seed(7)
+# load the library
+library(mlbench)
+library(caret)
+# load the data
+data(BostonHousing)
+# define the control using a random forest selection function
+control <- rfeControl(functions=rfFuncs, method="cv", number=10)
+# run the RFE algorithm
+results <- rfe(BostonHousing[,1:13], BostonHousing[,14], sizes=c(1:13), rfeControl=control)
+# summarize the results
+print(results)
+# list the chosen features
+predictors(results)
+# plot the results
+plot(results, type=c("g", "o"))
+
+---------------------------------------------------------------------------------------------------
+#Remove Redundant Feature 
+
+# load the data
+data(BostonHousing)
+# calculate correlation matrix
+correlationMatrix <- cor(BostonHousing[,1:13])
+#find type
+sapply(BostonHousing,class)
+# summarize the correlation matrix
+print(correlationMatrix)
+
+#to numeric
+BostonHousing$chas=as.numeric(BostonHousing$chas)
+
+
+# calculate correlation matrix
+correlationMatrix <- cor(BostonHousing[,1:13])
+
+library(corrplot)
+corrplot(correlationMatrix, method="circle")
+
+# find attributes that are highly corrected (ideally >0.75)
+highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.5)
+# print indexes of highly correlated attributes
+print(highlyCorrelated)
+
+---------------------------------------------------------------------------------------------------
+#Overall Regression Testing
+
+# Housing Values in Suburbs of Boston
+
+# Regression, numeric inputs
+
+# Dataset Description: https://archive.ics.uci.edu/ml/datasets/Housing
+
+
+# load libraries
+library(mlbench)
+library(caret)
+library(corrplot)
+
+# attach the BostonHousing dataset
+data(BostonHousing)
+
+# Split out validation dataset
+# create a list of 80% of the rows in the original dataset we can use for training
+set.seed(7)
+validation_index <- createDataPartition(BostonHousing$medv, p=0.80, list=FALSE)
+# select 20% of the data for validation
+validation <- BostonHousing[-validation_index,]
+# use the remaining 80% of data to training and testing the models
+dataset <- BostonHousing[validation_index,]
+
+
+# Summarize data
+
+# dimensions of dataset
+dim(dataset)
+
+# list types for each attribute
+sapply(dataset, class)
+
+# take a peek at the first 5 rows of the data
+head(dataset, n=20)
+
+# summarize attribute distributions
+summary(dataset)
+
+# convert factor to numeric
+dataset[,4] <- as.numeric(as.character(dataset[,4]))
+
+
+# summarize correlations between input variables
+cor(dataset[,1:13])
+
+
+# Univaraite Visualization
+
+# histograms each attribute
+par(mfrow=c(2,7))
+for(i in 1:13) {
+	hist(dataset[,i], main=names(dataset)[i])
+}
+
+# density plot for each attribute
+par(mfrow=c(2,7))
+for(i in 1:13) {
+	plot(density(dataset[,i]), main=names(dataset)[i])
+}
+
+# boxplots for each attribute
+par(mfrow=c(2,7))
+for(i in 1:13) {
+	boxplot(dataset[,i], main=names(dataset)[i])
+}
+
+
+# Multivariate Visualizations
+
+# scatterplot matrix
+pairs(dataset[,1:13])
+
+# correlation plot
+correlations <- cor(dataset[,1:13])
+corrplot(correlations, method="circle")
+
+
+# Evaluate Algorithms: Baseline
+
+# Run algorithms using 10-fold cross validation
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "RMSE"
+# lm
+set.seed(7)
+fit.lm <- train(medv~., data=dataset, method="lm", metric=metric, preProc=c("center", "scale"), trControl=control)
+# GLM
+set.seed(7)
+fit.glm <- train(medv~., data=dataset, method="glm", metric=metric, preProc=c("center", "scale"), trControl=control)
+# GLMNET
+set.seed(7)
+fit.glmnet <- train(medv~., data=dataset, method="glmnet", metric=metric, preProc=c("center", "scale"), trControl=control)
+# SVM
+set.seed(7)
+fit.svm <- train(medv~., data=dataset, method="svmRadial", metric=metric, preProc=c("center", "scale"), trControl=control)
+# CART
+set.seed(7)
+grid <- expand.grid(.cp=c(0, 0.05, 0.1))
+fit.cart <- train(medv~., data=dataset, method="rpart", metric=metric, tuneGrid=grid, preProc=c("center", "scale"), trControl=control)
+# kNN
+set.seed(7)
+fit.knn <- train(medv~., data=dataset, method="knn", metric=metric, preProc=c("center", "scale"), trControl=control)
+# Compare algorithms
+results <- resamples(list(LM=fit.lm, GLM=fit.glm, GLMNET=fit.glmnet, SVM=fit.svm, CART=fit.cart, KNN=fit.knn))
+summary(results)
+dotplot(results)
+
+
+# Evaluate Algorithms: Feature Selection
+
+# remove correlated attributes
+# find attributes that are highly corrected
+set.seed(7)
+cutoff <- 0.70
+correlations <- cor(dataset[,1:13])
+highlyCorrelated <- findCorrelation(correlations, cutoff=cutoff)
+for (value in highlyCorrelated) {
+	print(names(dataset)[value])
+}
+# create a new dataset without highly corrected features
+dataset_features <- dataset[,-highlyCorrelated]
+dim(dataset_features)
+
+# Run algorithms using 10-fold cross validation
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "RMSE"
+# lm
+set.seed(7)
+fit.lm <- train(medv~., data=dataset_features, method="lm", metric=metric, preProc=c("center", "scale"), trControl=control)
+# GLM
+set.seed(7)
+fit.glm <- train(medv~., data=dataset_features, method="glm", metric=metric, preProc=c("center", "scale"), trControl=control)
+# GLMNET
+set.seed(7)
+fit.glmnet <- train(medv~., data=dataset_features, method="glmnet", metric=metric, preProc=c("center", "scale"), trControl=control)
+# SVM
+set.seed(7)
+fit.svm <- train(medv~., data=dataset_features, method="svmRadial", metric=metric, preProc=c("center", "scale"), trControl=control)
+# CART
+set.seed(7)
+grid <- expand.grid(.cp=c(0, 0.05, 0.1))
+fit.cart <- train(medv~., data=dataset_features, method="rpart", metric=metric, tuneGrid=grid, preProc=c("center", "scale"), trControl=control)
+# kNN
+set.seed(7)
+fit.knn <- train(medv~., data=dataset_features, method="knn", metric=metric, preProc=c("center", "scale"), trControl=control)
+# Compare algorithms
+feature_results <- resamples(list(LM=fit.lm, GLM=fit.glm, GLMNET=fit.glmnet, SVM=fit.svm, CART=fit.cart, KNN=fit.knn))
+summary(feature_results)
+dotplot(feature_results)
+
+
+# Evaluate Algorithnms: Box-Cox Transform
+
+# Run algorithms using 10-fold cross validation
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "RMSE"
+# lm
+set.seed(7)
+fit.lm <- train(medv~., data=dataset, method="lm", metric=metric, preProc=c("center", "scale", "BoxCox"), trControl=control)
+# GLM
+set.seed(7)
+fit.glm <- train(medv~., data=dataset, method="glm", metric=metric, preProc=c("center", "scale", "BoxCox"), trControl=control)
+# GLMNET
+set.seed(7)
+fit.glmnet <- train(medv~., data=dataset, method="glmnet", metric=metric, preProc=c("center", "scale", "BoxCox"), trControl=control)
+# SVM
+set.seed(7)
+fit.svm <- train(medv~., data=dataset, method="svmRadial", metric=metric, preProc=c("center", "scale", "BoxCox"), trControl=control)
+# CART
+set.seed(7)
+grid <- expand.grid(.cp=c(0, 0.05, 0.1))
+fit.cart <- train(medv~., data=dataset, method="rpart", metric=metric, tuneGrid=grid, preProc=c("center", "scale", "BoxCox"), trControl=control)
+# kNN
+set.seed(7)
+fit.knn <- train(medv~., data=dataset, method="knn", metric=metric, preProc=c("center", "scale", "BoxCox"), trControl=control)
+# Compare algorithms
+transform_results <- resamples(list(LM=fit.lm, GLM=fit.glm, GLMNET=fit.glmnet, SVM=fit.svm, CART=fit.cart, KNN=fit.knn))
+summary(transform_results)
+dotplot(transform_results)
+
+
+# Improve Results With Tuning
+
+# look at parameters
+print(fit.svm)
+
+# tune SVM sigma and C parametres
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "RMSE"
+set.seed(7)
+grid <- expand.grid(.sigma=c(0.025, 0.05, 0.1, 0.15), .C=seq(1, 10, by=1))
+fit.svm <- train(medv~., data=dataset, method="svmRadial", metric=metric, tuneGrid=grid, preProc=c("BoxCox"), trControl=control)
+print(fit.svm)
+plot(fit.svm)
+
+
+# Ensemble Methods
+seed=7
+# try ensembles
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "RMSE"
+# Random Forest
+set.seed(seed)
+fit.rf <- train(medv~., data=dataset, method="rf", metric=metric, preProc=c("BoxCox"), trControl=control)
+# Stochastic Gradient Boosting
+set.seed(seed)
+fit.gbm <- train(medv~., data=dataset, method="gbm", metric=metric, preProc=c("BoxCox"), trControl=control, verbose=FALSE)
+# Cubist
+set.seed(seed)
+fit.cubist <- train(medv~., data=dataset, method="cubist", metric=metric, preProc=c("BoxCox"), trControl=control)
+# Compare algorithms
+ensemble_results <- resamples(list(RF=fit.rf, GBM=fit.gbm, CUBIST=fit.cubist))
+summary(ensemble_results)
+dotplot(ensemble_results)
+
+
+# Tune Cubist
+
+# look at parameters used for Cubist
+print(fit.cubist)
+
+# Tune the Cubist algorithm
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "RMSE"
+set.seed(7)
+grid <- expand.grid(.committees=seq(15, 25, by=1), .neighbors=c(3, 5, 7))
+tune.cubist <- train(medv~., data=dataset, method="cubist", metric=metric, preProc=c("BoxCox"), tuneGrid=grid, trControl=control)
+print(tune.cubist)
+plot(tune.cubist)
+
+
+# Finalize Model
+
+
+# prepare the data transform using training data
+set.seed(7)
+x <- dataset[,1:13]
+y <- dataset[,14]
+preprocessParams <- preProcess(x, method=c("BoxCox"))
+trans_x <- predict(preprocessParams, x)
+# train the final model
+finalModel <- cubist(x=trans_x, y=y, committees=18)
+summary(finalModel)
+
+# transform the validation dataset
+set.seed(7)
+val_x <- validation[,1:13]
+trans_val_x <- predict(preprocessParams, val_x)
+val_y <- validation[,14]
+# use final model to make predictions on the validation dataset
+predictions <- predict(finalModel, newdata=trans_val_x, neighbors=3)
+# calculate RMSE
+rmse <- RMSE(predictions, val_y)
+r2 <- R2(predictions, val_y)
+print(rmse)
+
+
+
+# Visualising the Training set results
+library(ggplot2)
+ggplot() +
+  geom_point(aes(x = training_set$YearsExperience, y = training_set$Salary),
+             colour = 'red') +
+  geom_line(aes(x = training_set$YearsExperience, y = predict(regressor, newdata = training_set)),
+            colour = 'blue') +
+  ggtitle('Salary vs Experience (Training set)') +
+  xlab('Years of experience') +
+  ylab('Salary')
+
+------------------------------------------------------------------------------------------	
+
+# Function that returns Root Mean Squared Error
+rmse <- function(error)
+{
+  sqrt(mean(error^2))
+}
+
+# Function that returns Mean Absolute Error
+mae <- function(error)
+{
+  mean(abs(error))
+}
+
+#r2
+
+R2=function(actual,predict)
+{
+  R2 <- 1 - (sum((actual-predict )^2)/sum((actual-mean(actual))^2))
+  print(R2)
+}
+
+R2=function(pred, obs, formula = "corr", na.rm = FALSE) {
+  n <- sum(complete.cases(pred))
+  switch(formula,
+         corr = cor(obs, pred, use = ifelse(na.rm, "complete.obs", "everything"))^2,
+         traditional = 1 - (sum((obs-pred)^2, na.rm = na.rm)/((n-1)*var(obs, na.rm = na.rm))))
+}
+
+# Calculate error
+error=pred-test$Salary
+rmse(error)
+mae(error)
+R2(pred,test$Salary) 
+
+------------------------------------------------------------------------------------------	
+
+# Fitting Multiple Linear Regression to the Training set
+regressor = lm(formula = Profit ~ .,
+               data = training_set)
+
+# Predicting the Test set results
+y_pred = predict(regressor, newdata = test_set)
+
+------------------------------------------------------------------------------------------	
+# Fitting Linear Regression to the dataset
+lin_reg = lm(formula = Salary ~ .,
+             data = dataset)
+
+# Fitting Polynomial Regression to the dataset
+dataset$Level2 = dataset$Level^2
+dataset$Level3 = dataset$Level^3
+dataset$Level4 = dataset$Level^4
+poly_reg = lm(formula = Salary ~ .,
+              data = dataset)
+
+------------------------------------------------------------------------------------------	
+# Fitting SVR to the dataset
+library(e1071)
+regressor = svm(formula = Salary ~ .,
+                data = dataset,
+                type = 'eps-regression',
+                kernel = 'radial')
+
+# Predicting a new result
+y_pred = predict(regressor, data.frame(Level = 6.5))	
+
+------------------------------------------------------------------------------------------	
+# Fitting Decision Tree to the dataset
+library(rpart)
+regressor = rpart(formula = Salary ~ .,
+                  data = dataset,
+                  control = rpart.control(minsplit = 1))
+
+# Predicting a new result with Decision Tree Regression
+y_pred = predict(regressor, data.frame(Level = 6.5))
+
+------------------------------------------------------------------------------------------	
+# Fitting Random Forest Regression to the dataset
+library(randomForest)
+set.seed(1234)
+regressor = randomForest(x = dataset[-2],
+                         y = dataset$Salary,
+                         ntree = 500)
+
+# Predicting a new result with Random Forest Regression
+y_pred = predict(regressor, data.frame(Level = 6.5))		
+
+------------------------------------------------------------------------------------------	  
+
+Net DM - ((netPrice-directCost)/netprice)*100
+Net SM - ((netPrice-(directCost+sharedCost))/netprice)*100
+List DM - ((listPrice-directCost)/listPrice)*100
+List SM - ((listPrice-(directCost+sharedCost))/listPrice)*100
+
+==============================================
+=IF(AND(X2>=0,X2<5),"RANGE0-4%",IF(AND(X2>=5,X2<10),"RANGE5-9%",IF(AND(X2>=10,X2<20),"RANGE10-20%",IF(AND(X2>=20,X2<30),"RANGE20-30%",IF(AND(X2>=30,X2<40),"RANGE30-40%",IF(AND(X2>=40,X2<50),"RANGE40-50%",IF(AND(X2>=50,X2<60),"RANGE50-60%",IF(AND(X2>=60,X2<70),"RANGE60-70%",IF(AND(X2>=70,X2<80),"RANGE70-80%",IF(AND(X2>=80,X2<90),"RANGE80-90%",IF(AND(X2>=90,X2<100),"RANGE90-100%")))))))))))
+
+=IF(AND(A2>=0,A2<10),"RANGE0-10%",IF(AND(A2>10,A2<=15),"RANGE10-15%",IF(AND(A2>=15,A2<20),"RANGE15-19%",IF(AND(A2>=20,A2<25),"RANGE20-24%",IF(AND(A2>=25,A2<30),"RANGE25-29%",IF(AND(A2>=30,A2<35),"RANGE30-34%",IF(AND(A2>=35,A2<40),"RANGE35-39%",IF(AND(A2>=40,A2<45),"RANGE40-44%",IF(AND(A2>=45,A2<50),"RANGE45-49%",IF(AND(A2>=50,A2<55),"RANGE50-54%",IF(AND(A2>=55,A2<60),"RANGE55-59%",IF(AND(A2>=60,A2<65),"RANGE60-64%",IF(AND(A2>=65,A2<70),"RANGE64-69%",IF(AND(A2>=70,A2<75),"RANGE70-74%",IF(AND(A2>=75,A2<80),"RANGE75-79%",IF(AND(A2>=80,A2<85),"RANGE80-84%",IF(AND(A2>=85,A2<90),"RANGE85-89%",IF(AND(A2>=90,A2<95),"RANGE90-95%"))))))))))))))))))
+
+----------------
+# Cubist
+set.seed(7)
+fit.cubist <- train(Discount_Percentage~DD_Total_List_Price+Term+DD_REC_List_Price+DD_NRE_List_Price
+                    +DD_REC_Direct_Cost+DD_NRE_Direct_Cost+DD_REC_Shared_Cost+DD_NRE_Shared_Cost+
+                      DD_List_Total_Direct_Margin_Percent+DD_List_Total_Shared_Margin_Percent, data=training_set, method="cubist", metric=metric, preProc=c("BoxCox"), trControl=control)
+
+					  
+# Scale data - used to scale the data to lower range ***** Z score Standardisation *********
+scaled.data <- scale(final_data[ ,c(1,3:8)])
+
+
+************************** Data normalization between 0 to 1 (Min - Max) ************ KNN scaling 
+
+
+data_norm <- function(x) {((x - min(x))/ (max(x) - min(x)))}
+pip_norm  <- as.data.frame(lapply(PIP_data1 , data_norm))
+
+--------------------------------------------------------------------------------------------------------
+Formula for CM
+
+t <- table(predictions = y_pred, actual = pip_data$Disc_Group)
+sum(diag(t))/ sum(t)
+---------------------------------------------------------------------------------------------------------------
+
+=====================================
+XG boost :
+
+
+############################### Data Analysis #####################################################
+############################### Load libraries
+# library(ggplot2)  # for visualization
+# library(DMwR)     # kNN Imputation for missing data (cannot handle categorical variable)
+
+
+# Nath Libraries
+library(xgboost) 
+library(magrittr)
+library(dplyr)
+library(Matrix)
+library(caret)
+library(data.table)
+
+############################### Load Data
+test.data <- read.csv("C:/Users/VARMHE7/Documents/Projects Folder/Data_For_Daily_Work/PIP_Data_After_Discussion/12 MB Datat/PIP_Mar_21.csv",
+                      header=TRUE)
+
+getwd()
+setwd("C:/Users//Desktop/Analytics")
+set.seed(101)
+test.data <- read.csv("pipxgboost.csv")
+
+############################### Prepare Data
+# Check for LI variables in the data and remove DD and LI BI variables from data set
+# OR Take only LI DD Variables with other variables
+
+names(test.data)
+
+data.required <- select(test.data,LI.DD...NRE.Direct.Cost, LI.DD...NRE.List.Price,
+                        LI.DD...NRE.Shared.Cost, LI.DD...REC.Direct.Cost,
+                        LI.DD...REC.List.Price, LI.DD...REC.Shared.Cost,
+                        Discount.Percentage..New., AM.Requested.Discount,
+                        Term, Scenario.ID, Country, Calendar.Date, Feature.Name,
+                        Customer.Segment)
+
+# Seperate the USA data into seperate dataframe
+data.required.USA <- subset(data.required, Country == "USA")
+
+# Separate Discount variables
+discount_variables <- select(data.required.USA, Discount.Percentage..New., AM.Requested.Discount)
+discount_variables_pos <- abs(discount_variables)
+
+
+# Impute the variables which have missing values
+discount_variables_pos$AM.Requested.Discount[is.na(discount_variables_pos$AM.Requested.Discount)] <- mean(discount_variables_pos$AM.Requested.Discount, na.rm = T)
+discount_variables_pos$Discount.Percentage..New.[is.na(discount_variables_pos$Discount.Percentage..New.)] <- mean(discount_variables_pos$Discount.Percentage..New., na.rm = T)
+
+# Delete Discount.Percentage..New. and AM.Requested.Discount from data.required.USA
+names(data.required.USA)
+data.required.USA <- data.required.USA[,c(-7,-8)]
+
+# Now we have imputed and absolute values as well
+# Combine the positive values with original data
+Main.data <- cbind(data.required.USA,discount_variables_pos)
+
+######### Seperate Numeric Data to apply log value
+num_data <- select(data.required.USA, LI.DD...NRE.Direct.Cost, LI.DD...NRE.List.Price,
+                   LI.DD...NRE.Shared.Cost, LI.DD...REC.Direct.Cost,
+                   LI.DD...REC.List.Price, LI.DD...REC.Shared.Cost)
+
+num_data_log <- log1p(num_data)
+
+# Delete original numeric variables from Main.data
+names(data.required.USA)
+Main.data.wihnoNum <- Main.data[,-c(1:6)]
+
+# Combine the log transformed numeric data to data.required.USA
+Main.data.WithNum <- cbind(num_data_log, Main.data.wihnoNum)
+
+######### Extract month from date column
+Main.data.WithNum$Month <- format(as.Date(Main.data.WithNum$Calendar.Date), "%m")
+
+# Delete original calender date variable.
+names(Main.data.WithNum)
+Main.data.WithNum <- Main.data.WithNum[,-c(10)]
+
+######### Extract discount data which is below 100
+data.below95 <- subset(Main.data.WithNum, Discount.Percentage..New. <= 95)
+
+
+######################### Prepare Data for XGBoost ######################################
+# Convert data which is to be supposed to be categorical
+str(data.below95) # if you see any variable which is supposed to be categorical change it
+
+data.below95$Term <- as.factor(data.below95$Term)
+data.below95$Month <- as.factor(data.below95$Month)
+
+# Change the discount percenta variable to first place
+new_df <- data.below95 %>% select(Discount.Percentage..New., everything())
+
+#### Remove the unwanted variables from the data
+names(new_df) # remove Scenario.ID and Country
+new_df <- new_df[,c(-9,-10)]
+
+# save the data to check the discount how to group
+new_df$Discount.Percentage..New. <- as.integer(new_df$Discount.Percentage..New)
+#write.csv(new_df,file = "new_df.csv")
+
+#### Group the discount variable into various groups
+new_df$DiscountBins <- cut(new_df$Discount.Percentage..New., breaks = c(0,31,50,58,60,70,95))
+str(new_df)
+
+# Delete Discount.Percentage..New.
+new_df <- new_df[,-c(1)]
+
+# Make the binned discount to first column
+Final_DataFrame <- new_df %>% select(DiscountBins, everything())
+
+# write.csv(Final_DataFrame,file = "Final_DataFrame.csv")
+
+# Check for the missing values
+summary(Final_DataFrame)
+str(Final_DataFrame)
+Final_DataFrame$DiscountBins <- as.factor(Final_DataFrame$DiscountBins)
+
+finaldata <- na.omit(Final_DataFrame)
+dim(finaldata)
+str(finaldata)
+summary(finaldata)
+
+# write.csv(finaldata,file = "equalDiscountBins.csv")
+
+##################################### Working With XGBoost ##########################################
+
+################# Working with XGBoost Data ####################
+
+############################### Load Libraries
+# Nath Libraries
+library(xgboost) 
+library(magrittr)
+library(dplyr)
+library(Matrix)
+library(caret)
+library(data.table)
+
+# Duplicate the data
+data <- finaldata
+
+data$Term <- as.factor(data$Term)
+data$Month <- as.factor(data$Month)
+
+####### Convert Y colum into numeric
+# levels <- unique(data$DiscountBins)
+# levels
+
+data$DiscountBins <- as.numeric(as.factor(data$DiscountBins))-1
+str(data)
+############################### Partition data
+set.seed(1474)
+ind <- sample(2,nrow(data), replace = T, prob = c(0.8,0.2))
+train <- data[ind==1,]
+test <- data[ind==2,]
+
+############################### Create matrix - OHN
+trainm <- sparse.model.matrix(DiscountBins ~. -1, data= train)
+# dim(trainm)
+colnames(trainm)
+
+# save the data
+# df <- as.data.frame(as.matrix(trainm))
+# write.csv(df,file = "sparseData.csv")
+
+
+train_label <- train[,"DiscountBins"]
+train_matrix <- xgb.DMatrix(data = as.matrix(trainm), label = train_label )
+
+# Repeat the same for test data
+testm <- sparse.model.matrix(DiscountBins ~. -1, data= test)
+test_label <- test[,"DiscountBins"]
+test_matrix <- xgb.DMatrix(data = as.matrix(testm), label = test_label )
+
+# dim(testm)
+# colnames(testm)
+
+############################### Parameters for XGBoost Algorithm
+numberOfClasses <- max(train_label) + 1
+xgb_params <- list("objective" = "multi:softmax",
+                   "eval_metric" = "merror",
+                   "num_class" = numberOfClasses,
+                   "max.depth" = 3,
+                   "eta" = 0.05)
+
+watchlist <- list(train= train_matrix, test = test_matrix)
+
+
+############################### XGBoost Model on Train Data
+bst_model <- xgb.train(params = xgb_params,
+                       data = train_matrix,
+                       nrounds = 100,
+                       watchlist = watchlist)
+
+############################### Training and Test Error plot
+e <- data.frame(bst_model$evaluation_log)
+plot(e$iter, e$train_merror, col = 'blue')
+lines(e$iter, e$test_merror, col = 'red')
+
+# min(e$test_merror)
+# e[e$test_merror == 0.066212,]
+
+############################### Feature Importance
+imp <- xgb.importance(colnames(train_matrix), model = bst_model)
+print(imp)
+xgb.plot.importance(imp)
+
+
+############################### Predictions on Test Data
+prediction <- predict(bst_model, test_matrix)
+
+############################### Confusion Matrix
+# Convert prediction amd test_labels in factors as they are numeric
+predictionFactor <- as.factor(prediction)
+test_labelFactor <- as.factor(test_label)
+
+confusionMatrix(predictionFactor, test_labelFactor)
+
+##################################################################################################
+Market Basket
+
+library(tidyverse)
+library(readxl)
+library(knitr)
+library(ggplot2)
+library(lubridate)
+library(arules)
+library(arulesViz)
+library(plyr)
+library(tm)
+library(SnowballC)
+library(arules)
+library(arulesViz)
+library(datasets)
+library(forecast)
+library(tseries)
+library("fUnitRoots")
+library("WDI")
+
+
+https://datascienceplus.com/a-gentle-introduction-on-market-basket-analysis%E2%80%8A-%E2%80%8Aassociation-rules/
+install.packages("tidyverse")
+install.packages("readxl")
+install.packages("knitr")
+install.packages("ggplot2")
+install.packages("lubridate")
+install.packages("arules")
+install.packages("arulesViz")
+install.packages("plyr")
+install.packages("tm")
+install.packages("SnowballC")
+install.packages("arules")
+install.packages("datasets")
+install.packages("forecast")
+install.packages("tseries")
+install.packages("fUnitRoots")
+install.packages("WDI")
+install.packages("NLP")
+
+https://www.analyticsvidhya.com/blog/2015/12/complete-tutorial-time-series-modeling/
+
+https://datascienceplus.com/time-series-analysis-using-arima-model-in-r/
+
+==============================================================================================
+Time series :
+======================================================
+#Load Libraries
+library("fUnitRoots")
+library(lmtest)
+library("forecast")
+library(FitAR)
+
+#import data
+data<-read.csv("data.csv",header=TRUE)
+#convert to time series
+tsData<- ts(data[2:35,2],start=c(2011,1),frequency=12)
+plot(tsData)
+#decompose into time series components
+timeseriescomponents <- decompose(tsData)
+plot(timeseriescomponents)
+#detemine stationarity of data
+urkpssTest(tsData, type = c("tau"), lags = c("short"),use.lag = NULL, doplot = TRUE)
+tsstationary<-diff(tsData, differences=1)
+plot(tsstationary)
+acf(tsData,lag.max=34)
+#remove seasonality
+timeseriesseasonallyadjusted <- tsData- timeseriescomponents$seasonal
+plot(timeseriesseasonallyadjusted)
+tsstationary <- diff(timeseriesseasonallyadjusted, differences=1)
+plot(tsstationary)
+par(mfrow=c(2,1))
+acf(tsstationary, lag.max=34) 
+pacf(tsstationary, lag.max=34)
+#fit the model
+fitARIMA<-arima(tsData, order=c(1,1,1),seasonal = list(order = c(1,0,0), period = 12),method="ML")
+fitARIMA
+#significance of coefficients
+coeftest(fitARIMA)
+par(mfrow=c(1,1))
+acf(fitARIMA$residuals)
+#residual diagnostics
+boxresult<-LjungBoxTest (fitARIMA$residuals,k=2,StartLag=1) # residual?? or the original series?
+par(mfrow=c(2,1))
+plot(boxresult[,3],main="Ljung-Box Q Test", ylab="P-values", xlab="Lag")
+qqnorm(fitARIMA$residuals)
+qqline(fitARIMA$residuals)
+
+auto.arima(tsData, trace=TRUE)
+
+#forcast future values
+par(mfrow=c(1,1))
+predict(fitARIMA,n.ahead = 5)
+futurVal <- forecast.Arima(fitARIMA,h=10, level=c(99.5))
+plot.forecast(futurVal)
+
+--------------------------------------------------------------------
+Nishunth Timeseries
+---------------------
+library(rpart)
+library(rpart.plot)
+library(dplyr)
+library(ggplot2)
+library(randomForest)
+library(caTools)
+library(mlbench)
+library(caret)
+library(e1071)
+library(glmnet)
+library(xgboost)
+library(Cubist)
+library(party)
+library(forecast)
+library(tidyverse)
+library(readxl)
+library(knitr)
+library(ggplot2)
+library(lubridate)
+library(arules)
+library(arulesViz)
+library(plyr)
+library(tm)
+library(SnowballC)
+library(arules)
+library(arulesViz)
+library(datasets)
+library(forecast)
+library(tseries)
+library(fUnitRoots)
+library(WDI)
+library(lubridate)
+library(xts)
+
+getwd()
+setwd("C:/Users//Desktop/Analytics")
+
+------------------------------------------------
+  
+  set.seed(101)
+data<- read.csv("time_series.csv")
+
+df_ts <- xts(x = data, order.by = data$Year)
+
+data.matrix(data)
+
+frequency(training_set)
+ts (training_set, start=c(2016,1), end=c(2018,6), frequency=12)
+
+
+timeseries.name <-  ts (data, start=c(2015,1), end=c(2018,6), frequency=12)
+timeseries.name
+
+x.msts <- msts(data,seasonal.periods=c(7,365.25))
+
+print(timeseries.name)
+plot(timeseries.name)
+
+components.ts = decompose(timeseries.name)
+plot(components.ts)
+
+library("fUnitRoots")
+urkpssTest(timeseries.name, type = c("tau"), lags = c("short"),use.lag = NULL, doplot = TRUE)
+tsstationary = diff(timeseries.name, differences=1)
+plot(tsstationary)
+
+library(lmtest)
+
+acf(timeseries.name,lag.max=34)
+
+timeseriesseasonallyadjusted <- timeseries.name-components.ts$seasonal
+tsstationary <- diff(timeseriesseasonallyadjusted, differences=1)
+
+acf(tsstationary, lag.max=34)
+pacf(tsstationary, lag.max=34)
+
+fitARIMA <- arima(timeseries.name, order=c(1,1,1),seasonal = list(order = c(1,0,0), period = 12),method="ML")
+library(lmtest)
+coeftest(fitARIMA) 
+
+confint(fitARIMA)
+
+acf(fitARIMA$residuals)
+library(FitAR)
+boxresult-LjungBoxTest (fitARIMA$residuals,k=2,StartLag=1)
+plot(boxresult[,3],main= "Ljung-Box Q Test", ylab= "P-values", xlab= "Lag")
+qqnorm(fitARIMA$residuals)
+qqline(fitARIMA$residuals)
+
+auto.arima(timeseries.name, trace=TRUE)
+
+predict(fitARIMA,n.ahead = 20)
+
+#forcast future values
+par(mfrow=c(1,1))
+predict(fitARIMA,n.ahead = 6)
+futurVal <- forecast(fitARIMA,h=10, level=c(99.5))
+plot(forecast(futurVal))
+
+-----------------------------------------------------------------------------------------------------------------------
+Conclusion Random Forest :
+-------------------------
+
+library(rpart)
+library(rpart.plot)
+library(dplyr)
+library(ggplot2)
+library(randomForest)
+library(caTools)
+library(mlbench)
+library(caret)
+library(e1071)
+library(glmnet)
+library(xgboost)
+library(Cubist)
+
+getwd()
+setwd("C:/Users//Desktop/Analytics")
+set.seed(101)
+pip_data <- read.csv("Demo_PIP.csv")
+
+
+pip_data1 <- transform(pip_data, Discount_Percentage = as.numeric(Discount_Percentage))
+pip_data1 <- transform(pip_data, Term = as.numeric(Term))
+pip_data <-pip_data1
+
+set.seed(123)
+split = sample.split(pip_data$Discount_Percentage,SplitRatio = 0.8)
+training_set = subset(pip_data, split == TRUE)
+test_set = subset(pip_data, split == FALSE)
+
+write.csv(Latest,"test_set2018_new.csv")
+sapply(pip_data, class)
+
+
+piprandomf <- randomForest(Discount_Percentage~DD_Total_List_Price+Term+DD_REC_List_Price+DD_NRE_List_Price
+                           +DD_REC_Direct_Cost+DD_NRE_Direct_Cost+DD_REC_Shared_Cost+DD_NRE_Shared_Cost+
+                             DD_List_Total_Direct_Margin_Percent+DD_List_Total_Shared_Margin_Percent,data=training_set,ntree=200,proximity=TRUE)
+
+saveRDS(piprandomf, "Conclusion_PIP_RandomF.rds")
+y_pred = predict(piprandomf, data.frame(test_set))
+error = (y_pred-test_set$Discount_Percentage)
+
+test_set$NishPred <-y_pred
+
+rmse(error)
+mae(error)
+R2(y_pred,Latest$Discount_Percentage)
+
+test_set$NishPred <-y_pred
+
+# Function that returns Root Mean Squared Error
+rmse <- function(error)
+{
+  sqrt(mean(error^2))
+}
+
+# Function that returns Mean Absolute Error
+mae <- function(error)
+{
+  mean(abs(error))
+}
+
+#r2
+
+
+R2=function(pred, obs, formula = "corr", na.rm = FALSE) {
+  n <- sum(complete.cases(pred))
+  switch(formula,
+         corr = cor(obs, pred, use = ifelse(na.rm, "complete.obs", "everything"))^2,
+         traditional = 1 - (sum((obs-pred)^2, na.rm = na.rm)/((n-1)*var(obs, na.rm = na.rm))))
+}
+
+
+# Calculate error
+rmse(error)
+mae(error)
+R2(y_pred,test_set$Discount_Percentage)
+R2 <- 1 - (sum((test_set$Discount_Percentage-y_pred )^2)/sum((test_set$Discount_Percentage-mean(test_set$Discount_Percentage))^2))
+
+
+test_set$preddesc1 = (y_pred-test_set$Discount_Percentage)
+
+ggplot(data=test_set, aes(test_set$preddesc1)) + 
+  geom_histogram(breaks=seq(-1, 1, by=0.1), 
+                 col="white",
+                 aes(fill=..count..)) +
+  scale_fill_gradient("Count", low="red", high="green")
